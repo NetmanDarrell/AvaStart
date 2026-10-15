@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AvaStart</title>
+  <style>
+    :root { font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; color: #e9eef7; background: #111722; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% 0%, #23334b, #111722 60%); }
+    main { width: min(760px, calc(100% - 36px)); margin: 0 auto; padding: clamp(70px, 14vh, 145px) 0 60px; }
+    header { text-align: center; margin-bottom: 34px; }
+    h1 { font-size: clamp(36px, 6vw, 58px); font-weight: 600; letter-spacing: -2px; margin: 0 0 8px; }
+    .subtle { color: #9baac1; font-size: 14px; }
+    .search { display: flex; align-items: center; gap: 10px; background: #f6f8fb; padding: 7px; border-radius: 15px; box-shadow: 0 14px 45px #0005; }
+    .search input { min-width: 0; flex: 1; padding: 12px 13px; font-size: 17px; color: #172032; background: transparent; border: 0; outline: 0; }
+    .search button, .primary { border: 0; background: #326de6; color: white; padding: 13px 19px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    .search button:hover, .primary:hover { background: #245bd0; }
+    .heading { margin: 39px 2px 15px; display: flex; align-items: center; justify-content: space-between; }
+    .heading h2 { font-weight: 600; font-size: 15px; color: #aab8cc; margin: 0; }
+    .text-button { background: none; border: 0; color: #a4c2ff; cursor: pointer; padding: 6px; font-size: 14px; }
+    .links { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 104px; padding: 12px 6px; background: #253248; border: 1px solid #39485f; color: #e9eef7; border-radius: 14px; text-decoration: none; transition: background .15s, transform .15s; overflow: hidden; }
+    .tile:hover { background: #334561; transform: translateY(-2px); }
+    .tile span { font-size: 13px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .tile .symbol { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: #3c5071; font-size: 18px; font-weight: 700; color: #fff; }
+    dialog { width: min(450px, calc(100% - 30px)); border: 1px solid #495a73; border-radius: 16px; background: #1c2738; color: #ecf1fa; padding: 24px; }
+    dialog::backdrop { background: #0009; }
+    dialog h2 { margin-top: 0; }
+    dialog label { display: block; font-size: 13px; color: #bac7db; margin: 14px 0 6px; }
+    dialog input { width: 100%; padding: 12px; color: #fff; background: #121a27; border: 1px solid #485873; border-radius: 8px; font: inherit; }
+    .actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 20px; }
+    .secondary, .danger { background: #344258; color: white; border: 0; border-radius: 9px; padding: 11px 13px; cursor: pointer; }
+    .danger { color: #ffb5b5; }
+    .hidden { display: none; }
+    footer { text-align: center; margin-top: 55px; color: #788aa4; font-size: 12px; }
+    @media (max-width: 540px) { .links { grid-template-columns: repeat(2, minmax(0, 1fr)); } .search input { font-size: 15px; } .search button { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>AvaStart</h1><div class="subtle" id="today"></div></header>
+    <form class="search" action="https://www.bing.com/search" method="get" role="search">
+      <input type="search" name="q" placeholder="Search with Bing..." aria-label="Search with Bing" autocomplete="off" autofocus required>
+      <button type="submit">Search</button>
+    </form>
+    <section aria-label="Shortcuts">
+      <div class="heading"><h2>SHORTCUTS</h2><button class="text-button" id="add" type="button">+ Add shortcut</button></div>
+      <div class="links" id="links"></div>
+    </section>
+    <footer>No feeds. No adverts. Just your start page.</footer>
+  </main>
+  <dialog id="editor">
+    <form id="shortcutForm">
+      <h2 id="dialogTitle">Add shortcut</h2>
+      <label for="name">Name</label><input id="name" maxlength="50" required placeholder="GitHub">
+      <label for="url">Web address</label><input id="url" type="url" required placeholder="https://github.com">
+      <div class="actions"><button type="button" class="danger hidden" id="remove">Delete</button><span></span><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary">Save</button></div>
+    </form>
+  </dialog>
+  <script>
+    const defaults = [
+      { name: 'GitHub', url: 'https://github.com' },
+      { name: 'Google Drive', url: 'https://drive.google.com' },
+      { name: 'Outlook', url: 'https://outlook.live.com' },
+      { name: 'YouTube', url: 'https://www.youtube.com' }
+    ];
+    const storageKey = 'avastart.shortcuts.v1';
+    let shortcuts;
+    try { const stored = JSON.parse(localStorage.getItem(storageKey)); shortcuts = Array.isArray(stored) ? stored : defaults.slice(); }
+    catch { shortcuts = defaults.slice(); }
+    let editing = -1;
+    const tiles = document.getElementById('links');
+    const editor = document.getElementById('editor');
+    const nameInput = document.getElementById('name');
+    const urlInput = document.getElementById('url');
+    const removeButton = document.getElementById('remove');
+    document.getElementById('today').textContent = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+    function save() { try { localStorage.setItem(storageKey, JSON.stringify(shortcuts)); } catch { alert('Browser storage is unavailable; changes may not persist.'); } render(); }
+    function render() {
+      tiles.replaceChildren();
+      shortcuts.forEach((item, index) => {
+        const link = document.createElement('a'); link.className = 'tile'; link.href = item.url;
+        link.title = item.name + ' — right-click to edit';
+        const symbol = document.createElement('div'); symbol.className = 'symbol'; symbol.textContent = item.name.trim().charAt(0).toUpperCase() || '↗';
+        const text = document.createElement('span'); text.textContent = item.name;
+        link.append(symbol, text);
+        link.addEventListener('contextmenu', e => { e.preventDefault(); openEditor(index); });
+        tiles.append(link);
+      });
+    }
+    function openEditor(index = -1) {
+      editing = index;
+      const item = shortcuts[index];
+      document.getElementById('dialogTitle').textContent = item ? 'Edit shortcut' : 'Add shortcut';
+      nameInput.value = item?.name || ''; urlInput.value = item?.url || '';
+      removeButton.classList.toggle('hidden', !item);
+      editor.showModal(); nameInput.focus();
+    }
+    document.getElementById('add').addEventListener('click', () => openEditor());
+    document.getElementById('cancel').addEventListener('click', () => editor.close());
+    document.getElementById('remove').addEventListener('click', () => { if (editing >= 0) { shortcuts.splice(editing, 1); save(); } editor.close(); });
+    document.getElementById('shortcutForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const name = nameInput.value.trim(), url = urlInput.value.trim();
+      try { const parsed = new URL(url); if (!['http:', 'https:'].includes(parsed.protocol)) throw Error(); }
+      catch { urlInput.setCustomValidity('Enter an http:// or https:// address'); urlInput.reportValidity(); return; }
+      urlInput.setCustomValidity('');
+      const item = { name, url };
+      if (editing < 0) shortcuts.push(item); else shortcuts[editing] = item;
+      save(); editor.close();
+    });
+    urlInput.addEventListener('input', () => urlInput.setCustomValidity(''));
+    render();
+  </script>
+</body>
+</html>
